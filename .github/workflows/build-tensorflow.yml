@@ -116,7 +116,7 @@ jobs:
           cd tensorflow
           
           # Build with limited parallelism to avoid OOM on RISC-V
-          bazel build --jobs=8 \
+          bazel build --jobs=64 \
             --local_ram_resources=8192 \
             --config=opt \
             //tensorflow/tools/pip_package:build_pip_package
