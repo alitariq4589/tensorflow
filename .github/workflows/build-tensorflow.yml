@@ -1,10 +1,13 @@
 name: Build TensorFlow for RISC-V
 
+# NOTE: This workflow depends on the Bazelisk build workflow
+# Make sure you have built and released Bazelisk first!
+
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     - cron: "0 0 3 * *"  # Monthly on the 3rd
 
@@ -40,6 +43,24 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Install Bazelisk from release
+        run: |
+          # Download the latest Bazelisk release from bazelisk-riscv repo
+          BAZELISK_REPO="alitariq4589/bazelisk-riscv"
+          
+          # Get the latest release info
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/${BAZELISK_REPO}/releases/latest)
+          BAZELISK_VERSION=$(echo "$LATEST_RELEASE" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          BAZELISK_ASSET="bazelisk-${BAZELISK_VERSION}-riscv64-linux"
+          
+          # Download using the pattern: bazelisk-{version}-riscv64-linux
+          wget https://github.com/${BAZELISK_REPO}/releases/latest/download/${BAZELISK_ASSET} -O bazelisk
+          
+          chmod +x bazelisk
+          sudo mv bazelisk /usr/local/bin/bazel
+          
+          bazel --version
+
       - name: Setup Python environment
         run: |
           python3 -m venv $GITHUB_WORKSPACE/tf_env
@@ -47,13 +68,6 @@ jobs:
           pip install --upgrade pip
           pip install numpy wheel packaging requests opt_einsum
           pip install keras_preprocessing --no-deps
-
-      - name: Install Bazel
-        run: |
-          # Install Bazelisk (automatically manages Bazel version)
-          wget https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-riscv64 -O bazelisk
-          chmod +x bazelisk
-          sudo mv bazelisk /usr/local/bin/bazel
 
       - name: Check environment
         run: |
@@ -90,6 +104,9 @@ jobs:
           # Fetch and checkout just that tag commit (still shallow)
           git fetch --depth=1 origin tag $LATEST_TAG
           git checkout FETCH_HEAD
+          
+          # Force Bazel 8.0+ for RISC-V support (rules_python 0.33+)
+          echo "8.0.0" > .bazelversion
 
           echo "tag_name=$LATEST_TAG" >> "$GITHUB_OUTPUT"
 
@@ -116,7 +133,7 @@ jobs:
           cd tensorflow
           
           # Build with limited parallelism to avoid OOM on RISC-V
-          bazel build --jobs=64 \
+          bazel build --jobs=8 \
             --local_ram_resources=8192 \
             --config=opt \
             //tensorflow/tools/pip_package:build_pip_package
@@ -191,5 +208,9 @@ jobs:
             # Install the wheel
             pip install tensorflow-*.whl
             ```
+            
+            ## Requirements
+            - Python 3.8+
+            - NumPy
             
             Built on: ${{ github.run_id }}
